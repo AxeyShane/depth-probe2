@@ -1,256 +1,398 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Focus Distance Probe</title>
 <style>
+  :root {
+    --bg: #0b1017;
+    --panel: #151c26;
+    --line: #263140;
+    --text: #e8edf4;
+    --dim: #8a97a8;
+    --accent: #4fc3f7;
+    --good: #4caf50;
+    --bad: #ef5350;
+    --warn: #ffb74d;
+  }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 12px; background: #0b0f14; color: #e6edf3;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 14px; line-height: 1.4;
+    margin: 0; padding: 12px; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, Roboto, "Segoe UI", sans-serif;
   }
   h1 { font-size: 18px; margin: 0 0 4px; }
-  p.sub { color: #8b98a5; margin: 0 0 14px; }
-  video { width: 100%; max-height: 40vh; background: #000; border-radius: 8px; }
-  button {
-    background: #1f6feb; color: #fff; border: none; border-radius: 6px;
-    padding: 10px 14px; font-size: 14px; margin: 4px 4px 4px 0; cursor: pointer;
-  }
-  button:disabled { background: #30363d; color: #6e7681; }
-  button.secondary { background: #21262d; border: 1px solid #30363d; }
+  h2 { font-size: 14px; margin: 18px 0 6px; color: var(--accent); }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
   .panel {
-    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    padding: 10px 12px; margin-top: 10px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; margin-bottom: 12px;
   }
-  .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid #21262d; }
-  .row:last-child { border-bottom: none; }
-  .label { color: #8b98a5; }
-  .val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
-  .ok { color: #3fb950; }
-  .bad { color: #f85149; }
-  .warn { color: #d29922; }
-  #liveReadout { font-size: 28px; font-family: ui-monospace, monospace; text-align: center; padding: 14px; }
-  #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
-  .hint { color: #8b98a5; font-size: 12px; margin-top: 6px; }
+  video {
+    width: 100%; max-height: 40vh; background: #000; border-radius: 8px;
+    display: block; object-fit: contain;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  button {
+    flex: 1; min-width: 80px; padding: 12px 10px; border: none; border-radius: 8px;
+    background: #26333f; color: var(--text); font-size: 14px; font-weight: 600;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  button:active { background: #33445a; }
+  button.primary { background: var(--accent); color: #05131a; }
+  button.danger { background: var(--bad); color: #fff; }
+  button.on { background: var(--good); color: #06210a; }
+  button:disabled { opacity: 0.4; }
+  input[type=range] { width: 100%; margin: 8px 0; }
+  input[type=number], input[type=text] {
+    width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: #0e141c; color: var(--text); font-size: 16px;
+  }
+  .kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .kv:last-child { border-bottom: none; }
+  .kv b { color: var(--dim); font-weight: 400; }
+  .big { font-size: 28px; font-weight: 700; color: var(--accent); text-align: center; margin: 2px 0; }
+  .ok { color: var(--good); } .no { color: var(--bad); } .maybe { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  th, td { padding: 4px 5px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 400; position: sticky; top: 0; background: var(--panel); }
+  .logwrap { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .markrow { color: var(--warn); font-weight: 600; }
+  .status { font-size: 12px; padding: 6px 10px; border-radius: 6px; margin-top: 8px; }
+  .status.recording { background: rgba(76,175,80,0.15); color: var(--good); }
+  .twocol { display: flex; gap: 8px; }
+  .twocol > div { flex: 1; text-align: center; }
+  .twocol .sub { margin: 0; }
 </style>
 </head>
 <body>
-  <h1>Focus Distance Probe</h1>
-  <p class="sub">Tests whether this phone/browser exposes the camera's autofocus lens-position distance -- a signal source independent of ARCore depth-sensing and hit-test, which have already been shown unreliable at macro range.</p>
 
+<h1>Focus Distance Probe</h1>
+<div class="sub">Reads camera lens focus state via the Image Capture API, and now scores actual image sharpness so "did it refocus" is a measured number, not something you have to eyeball. Logs locally to this phone only — nothing leaves the device except the CSV you export.</div>
+
+<div class="panel">
   <video id="preview" autoplay playsinline muted></video>
-  <div>
-    <button id="startBtn">Start camera</button>
-    <button id="stopBtn" class="secondary" disabled>Stop</button>
+  <canvas id="sharpCanvas" width="160" height="120" style="display:none"></canvas>
+  <div class="row">
+    <button id="btnStart" class="primary">Start Camera</button>
+  </div>
+</div>
+
+<div class="panel" id="capsPanel" style="display:none">
+  <h2>Capabilities</h2>
+  <div id="capsOut"></div>
+</div>
+
+<div class="panel" id="livePanel" style="display:none">
+  <h2>Live Reading</h2>
+  <div class="twocol">
+    <div>
+      <div class="big" id="liveVal">—</div>
+      <div class="sub">focusDistance</div>
+    </div>
+    <div>
+      <div class="big" id="liveSharp">—</div>
+      <div class="sub">sharpness score (higher = more in focus)</div>
+    </div>
+  </div>
+  <div class="sub" id="liveMode" style="text-align:center;margin-top:6px">focusMode: —</div>
+</div>
+
+<div class="panel" id="drivePanel" style="display:none">
+  <h2>Manual Focus Drive</h2>
+  <div class="sub">Tap a preset while pointed at a nearby object. Each tap drives the lens, waits ~0.6s to settle, then measures sharpness automatically — the result line below tells you objectively whether it refocused, no eyeballing needed.</div>
+  <input type="range" id="focusSlider" disabled>
+  <div class="row">
+    <button id="btnNear">Near</button>
+    <button id="btnMid">Mid</button>
+    <button id="btnFar">Far</button>
+    <button id="btnAuto">Continuous (auto)</button>
+  </div>
+  <div class="sub" id="presetStatus" style="margin-top:8px"></div>
+</div>
+
+<div class="panel" id="logPanel" style="display:none">
+  <h2>Walk-Back Test Log</h2>
+  <div class="sub">Tap Start Logging, then walk backward from the object with your tape measure. focusDistance and sharpness both log automatically 5x/sec. Whenever you read a distance off the tape, type it below and tap Mark to tie that tape reading to the live focusDistance/sharpness at that instant.</div>
+
+  <div class="row">
+    <button id="btnLog" class="primary">Start Logging</button>
+  </div>
+  <div class="status" id="logStatus" style="display:none"></div>
+
+  <div class="row" style="margin-top:12px">
+    <input type="number" id="actualDist" placeholder="Tape reading, cm" inputmode="decimal">
+    <button id="btnMark" class="on" style="flex:0 0 90px">Mark</button>
   </div>
 
-  <div class="panel">
-    <div class="row"><span class="label">Device / browser</span><span class="val" id="deviceInfo">--</span></div>
-    <div class="row"><span class="label">getUserMedia</span><span class="val" id="gumSupport">--</span></div>
-    <div class="row"><span class="label">ImageCapture API</span><span class="val" id="icSupport">--</span></div>
-    <div class="row"><span class="label">track.getCapabilities().focusDistance</span><span class="val" id="capFocusDist">--</span></div>
-    <div class="row"><span class="label">ImageCapture photoCapabilities.focusDistance</span><span class="val" id="photoCapFocusDist">--</span></div>
-    <div class="row"><span class="label">focusMode options</span><span class="val" id="focusModes">--</span></div>
+  <div class="row">
+    <button id="btnDownload">Download CSV</button>
+    <button id="btnClear" class="danger">Clear Log</button>
   </div>
 
-  <div class="panel">
-    <div class="hint">Live focus distance reading (from track.getSettings(), polled 5x/sec). Point the camera at something ~5cm away, then ~20cm, then ~1m+ away and watch this number.</div>
-    <div id="liveReadout">--</div>
+  <div class="logwrap">
+    <table>
+      <thead><tr><th>#</th><th>t(s)</th><th>focusDist</th><th>sharp</th><th>marked cm</th><th>preset</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
   </div>
-
-  <div class="panel">
-    <div class="hint">Manual-focus test: if the browser lets us set focusDistance directly (not just read it), tap these while pointed at a nearby object and watch whether the image actually refocuses.</div>
-    <button id="focusMinBtn" class="secondary" disabled>Set focus: near</button>
-    <button id="focusMidBtn" class="secondary" disabled>Set focus: mid</button>
-    <button id="focusMaxBtn" class="secondary" disabled>Set focus: far</button>
-    <button id="focusAutoBtn" class="secondary" disabled>Back to auto</button>
-    <div class="hint" id="manualFocusResult"></div>
-  </div>
-
-  <div class="panel">
-    <div class="label" style="margin-bottom:6px;">Log</div>
-    <div id="log"></div>
-  </div>
+  <div class="sub" id="logCount" style="margin-top:6px">0 points logged</div>
+</div>
 
 <script>
-(function () {
-  const $ = (id) => document.getElementById(id);
-  const logEl = $('log');
-  function log(msg) {
-    const t = new Date().toLocaleTimeString();
-    logEl.textContent += `[${t}] ${msg}\n`;
-    logEl.scrollTop = logEl.scrollHeight;
+const STORAGE_KEY = 'focusProbeLog_v2';
+
+let track = null;
+let caps = null;
+let logging = false;
+let logTimer = null;
+let startTime = null;
+let log = [];
+let lastSharpness = null;
+
+// ---- persistence: load any prior session's log on page open ----
+try {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) log = JSON.parse(saved);
+} catch (e) { log = []; }
+
+function persist() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(log)); } catch (e) {}
+}
+
+function renderLog() {
+  const body = document.getElementById('logBody');
+  body.innerHTML = '';
+  const start = Math.max(0, log.length - 200);
+  for (let i = start; i < log.length; i++) {
+    const r = log[i];
+    const tr = document.createElement('tr');
+    if ((r.markedCm !== null && r.markedCm !== undefined) || r.preset) tr.className = 'markrow';
+    tr.innerHTML = `<td>${i}</td><td>${r.t.toFixed(2)}</td><td>${r.focusDistance != null ? r.focusDistance.toFixed(3) : '—'}</td><td>${r.sharpness ?? '—'}</td><td>${r.markedCm ?? ''}</td><td>${r.preset ?? ''}</td>`;
+    body.appendChild(tr);
   }
+  document.getElementById('logCount').textContent = `${log.length} points logged`;
+}
+renderLog();
 
-  let stream = null;
-  let track = null;
-  let imageCapture = null;
-  let pollTimer = null;
-
-  async function describeDevice() {
-    try {
-      if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
-        const ua = await navigator.userAgentData.getHighEntropyValues(['model', 'platform', 'platformVersion', 'fullVersionList']);
-        const browser = (ua.fullVersionList || []).map(b => `${b.brand} ${b.version}`).join(', ');
-        $('deviceInfo').textContent = `${ua.model || 'unknown model'} / ${ua.platform} ${ua.platformVersion} / ${browser}`;
-      } else {
-        $('deviceInfo').textContent = navigator.userAgent;
-      }
-    } catch (e) {
-      $('deviceInfo').textContent = navigator.userAgent;
-      log('Client Hints unavailable: ' + e.message);
+// ---- sharpness scoring: Laplacian edge-energy on a downsampled center frame ----
+// Higher = more high-frequency detail = more in focus. Not calibrated to any
+// absolute unit -- only meaningful as a relative comparison across readings
+// of the SAME scene from the SAME camera.
+function computeSharpness(videoEl) {
+  const canvas = document.getElementById('sharpCanvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const w = canvas.width, h = canvas.height;
+  ctx.drawImage(videoEl, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const gray = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  }
+  let energy = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      const lap = 4 * gray[idx] - gray[idx - 1] - gray[idx + 1] - gray[idx - w] - gray[idx + w];
+      energy += lap * lap;
     }
   }
+  return energy / (w * h);
+}
 
-  function setStatus(el, ok, text) {
-    el.textContent = text;
-    el.className = 'val ' + (ok === true ? 'ok' : ok === false ? 'bad' : 'warn');
-  }
+// ---- camera start ----
+document.getElementById('btnStart').addEventListener('click', async () => {
+  const out = document.getElementById('capsOut');
+  document.getElementById('capsPanel').style.display = 'block';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }
+    });
+    document.getElementById('preview').srcObject = stream;
+    track = stream.getVideoTracks()[0];
+    caps = track.getCapabilities ? track.getCapabilities() : {};
 
-  async function start() {
-    $('startBtn').disabled = true;
+    let html = '';
+    if (caps.focusDistance) {
+      const fd = caps.focusDistance;
+      html += `<div class="kv"><b>focusDistance (track.getCapabilities)</b><span class="ok">min ${fd.min}, max ${fd.max}, step ${fd.step}</span></div>`;
+    } else {
+      html += `<div class="kv"><b>focusDistance (track.getCapabilities)</b><span class="no">not exposed</span></div>`;
+    }
+    html += `<div class="kv"><b>focusMode options</b><span>${(caps.focusMode || []).join(', ') || '—'}</span></div>`;
+
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setStatus($('gumSupport'), false, 'not supported');
-        log('getUserMedia not supported in this browser.');
-        return;
-      }
-      setStatus($('gumSupport'), true, 'supported');
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      $('preview').srcObject = stream;
-      track = stream.getVideoTracks()[0];
-      log('Camera started: ' + (track.label || 'unnamed track'));
+      const ic = new ImageCapture(track);
+      await ic.getPhotoCapabilities();
+      html += `<div class="kv"><b>getPhotoCapabilities</b><span class="ok">responded</span></div>`;
+    } catch (e) {
+      html += `<div class="kv"><b>getPhotoCapabilities</b><span class="maybe">empty / unsupported (fine — we only need one working path)</span></div>`;
+    }
+    out.innerHTML = html;
 
-      // --- track.getCapabilities() / getSettings() ---
-      let caps = {};
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStart').textContent = 'Camera running';
+
+    if (caps.focusDistance) {
+      document.getElementById('livePanel').style.display = 'block';
+      startLiveReadout();
+    }
+
+    if (caps.focusMode && caps.focusMode.includes('manual') && caps.focusDistance) {
+      setupManualDrive();
+      document.getElementById('drivePanel').style.display = 'block';
+    }
+
+    if (caps.focusDistance) {
+      document.getElementById('logPanel').style.display = 'block';
+    }
+
+  } catch (e) {
+    out.innerHTML = `<div class="kv"><b>Camera error</b><span class="no">${e.message}</span></div>`;
+  }
+});
+
+// ---- live readout, 5x/sec: focusDistance + sharpness together ----
+function startLiveReadout() {
+  setInterval(() => {
+    if (!track) return;
+    const s = track.getSettings();
+    document.getElementById('liveVal').textContent =
+      (s.focusDistance !== undefined) ? s.focusDistance.toFixed(4) : '—';
+    document.getElementById('liveMode').textContent = 'focusMode: ' + (s.focusMode || '—');
+    try {
+      const video = document.getElementById('preview');
+      if (video.readyState >= 2) {
+        lastSharpness = computeSharpness(video);
+        document.getElementById('liveSharp').textContent = Math.round(lastSharpness);
+      }
+    } catch (e) { /* frame not ready yet, skip this tick */ }
+  }, 200);
+}
+
+// ---- manual drive ----
+function setupManualDrive() {
+  const fd = caps.focusDistance;
+  const slider = document.getElementById('focusSlider');
+  slider.min = fd.min; slider.max = fd.max; slider.step = fd.step;
+  const settings = track.getSettings();
+  slider.value = settings.focusDistance !== undefined ? settings.focusDistance : fd.min;
+  slider.disabled = false;
+
+  const setFocus = async (val) => {
+    try {
+      await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: val }] });
+    } catch (e) {
       try {
-        caps = track.getCapabilities ? track.getCapabilities() : {};
-        log('track.getCapabilities() keys: ' + Object.keys(caps).join(', '));
-      } catch (e) {
-        log('track.getCapabilities() threw: ' + e.message);
+        await track.applyConstraints({ focusMode: 'manual', focusDistance: val });
+      } catch (e2) {
+        alert('applyConstraints failed: ' + e2.message);
       }
-      if ('focusDistance' in caps) {
-        setStatus($('capFocusDist'), true, `min=${caps.focusDistance.min}, max=${caps.focusDistance.max}, step=${caps.focusDistance.step}`);
-      } else {
-        setStatus($('capFocusDist'), false, 'not exposed');
-      }
-      if ('focusMode' in caps) {
-        $('focusModes').textContent = JSON.stringify(caps.focusMode);
-      } else {
-        $('focusModes').textContent = 'not exposed';
-      }
-
-      // --- ImageCapture API ---
-      if ('ImageCapture' in window) {
-        setStatus($('icSupport'), true, 'supported');
-        try {
-          imageCapture = new ImageCapture(track);
-          const photoCaps = await imageCapture.getPhotoCapabilities();
-          log('ImageCapture photoCapabilities keys: ' + Object.keys(photoCaps).join(', '));
-          if (photoCaps.focusDistance) {
-            setStatus($('photoCapFocusDist'), true,
-              `min=${photoCaps.focusDistance.min}, max=${photoCaps.focusDistance.max}, step=${photoCaps.focusDistance.step}`);
-          } else {
-            setStatus($('photoCapFocusDist'), false, 'not exposed');
-          }
-        } catch (e) {
-          setStatus($('photoCapFocusDist'), false, 'error: ' + e.message);
-          log('getPhotoCapabilities() threw: ' + e.message);
-        }
-      } else {
-        setStatus($('icSupport'), false, 'not supported');
-        setStatus($('photoCapFocusDist'), false, 'ImageCapture unavailable');
-      }
-
-      // enable manual focus buttons only if the capability is really there
-      const canManualFocus = 'focusDistance' in caps && caps.focusMode && caps.focusMode.includes('manual');
-      $('focusMinBtn').disabled = !canManualFocus;
-      $('focusMidBtn').disabled = !canManualFocus;
-      $('focusMaxBtn').disabled = !canManualFocus;
-      $('focusAutoBtn').disabled = !(caps.focusMode && caps.focusMode.includes('continuous'));
-      if (!canManualFocus) {
-        $('manualFocusResult').textContent = 'Manual focus control not available on this device/browser.';
-      }
-
-      $('stopBtn').disabled = false;
-      pollTimer = setInterval(pollLiveFocus, 200);
-    } catch (e) {
-      log('Failed to start camera: ' + e.message);
-      $('startBtn').disabled = false;
     }
+  };
+
+  slider.addEventListener('input', () => setFocus(parseFloat(slider.value)));
+
+  // Presets: set focus, wait for the lens to settle, then measure + log automatically
+  async function runPreset(label, val) {
+    slider.value = val;
+    document.getElementById('presetStatus').textContent = `${label}: driving lens…`;
+    await setFocus(val);
+    setTimeout(() => {
+      const s = track.getSettings();
+      const sharp = lastSharpness !== null ? Math.round(lastSharpness) : null;
+      document.getElementById('presetStatus').textContent =
+        `${label} → focusDistance ${s.focusDistance !== undefined ? s.focusDistance.toFixed(3) : '—'}, sharpness ${sharp ?? '—'} (compare across taps — rising/falling confirms the lens actually moved)`;
+      if (!startTime) startTime = performance.now();
+      logPoint(undefined, label);
+    }, 600); // settle time for the lens motor before trusting the reading
   }
 
-  function pollLiveFocus() {
-    if (!track) return;
-    try {
-      const settings = track.getSettings ? track.getSettings() : {};
-      if ('focusDistance' in settings) {
-        $('liveReadout').textContent = settings.focusDistance.toFixed(4) + ' (units per spec: dioptres or normalized, device-dependent)';
-      } else {
-        $('liveReadout').textContent = 'focusDistance not in getSettings()';
-      }
-    } catch (e) {
-      $('liveReadout').textContent = 'error reading settings: ' + e.message;
-    }
-  }
+  document.getElementById('btnNear').addEventListener('click', () => runPreset('near', fd.min));
+  document.getElementById('btnFar').addEventListener('click', () => runPreset('far', fd.max));
+  document.getElementById('btnMid').addEventListener('click', () => runPreset('mid', fd.min + (fd.max - fd.min) / 2));
 
-  async function setFocus(value) {
-    if (!track) return;
-    try {
-      await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: value }] });
-      log(`applyConstraints(focusDistance=${value}) succeeded`);
-      $('manualFocusResult').textContent = `Set focusDistance to ${value}. Check the preview: did it visibly refocus?`;
-    } catch (e) {
-      log(`applyConstraints(focusDistance=${value}) failed: ${e.message}`);
-      $('manualFocusResult').textContent = 'applyConstraints failed: ' + e.message;
-    }
-  }
-
-  $('focusMinBtn').addEventListener('click', () => {
-    const caps = track.getCapabilities();
-    setFocus(caps.focusDistance.min);
-  });
-  $('focusMidBtn').addEventListener('click', () => {
-    const caps = track.getCapabilities();
-    setFocus((caps.focusDistance.min + caps.focusDistance.max) / 2);
-  });
-  $('focusMaxBtn').addEventListener('click', () => {
-    const caps = track.getCapabilities();
-    setFocus(caps.focusDistance.max);
-  });
-  $('focusAutoBtn').addEventListener('click', async () => {
+  document.getElementById('btnAuto').addEventListener('click', async () => {
     try {
       await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-      log('Switched back to continuous autofocus');
+      document.getElementById('presetStatus').textContent = 'Switched back to continuous autofocus.';
     } catch (e) {
-      log('Failed to switch back to auto: ' + e.message);
+      try {
+        await track.applyConstraints({ focusMode: 'continuous' });
+      } catch (e2) {}
     }
   });
+}
 
-  function stop() {
-    if (pollTimer) clearInterval(pollTimer);
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = null; track = null; imageCapture = null;
-    $('startBtn').disabled = false;
-    $('stopBtn').disabled = true;
-    $('focusMinBtn').disabled = true;
-    $('focusMidBtn').disabled = true;
-    $('focusMaxBtn').disabled = true;
-    $('focusAutoBtn').disabled = true;
-    log('Camera stopped.');
+// ---- logging ----
+document.getElementById('btnLog').addEventListener('click', () => {
+  logging = !logging;
+  const btn = document.getElementById('btnLog');
+  const status = document.getElementById('logStatus');
+  if (logging) {
+    if (!startTime) startTime = performance.now();
+    btn.textContent = 'Stop Logging';
+    btn.classList.remove('primary'); btn.classList.add('danger');
+    status.style.display = 'block';
+    status.classList.add('recording');
+    status.textContent = 'Recording... walk backward with the tape now.';
+    logTimer = setInterval(() => logPoint(), 200); // 5x/sec
+  } else {
+    btn.textContent = 'Start Logging';
+    btn.classList.add('primary'); btn.classList.remove('danger');
+    status.classList.remove('recording');
+    status.textContent = 'Stopped.';
+    clearInterval(logTimer);
   }
+});
 
-  $('startBtn').addEventListener('click', start);
-  $('stopBtn').addEventListener('click', stop);
+function logPoint(markedCm, presetLabel) {
+  if (!track) return;
+  const s = track.getSettings();
+  const t = (performance.now() - startTime) / 1000;
+  log.push({
+    t: t,
+    focusDistance: s.focusDistance !== undefined ? s.focusDistance : null,
+    sharpness: lastSharpness !== null ? Math.round(lastSharpness) : null,
+    mode: s.focusMode || null,
+    markedCm: (markedCm !== undefined) ? markedCm : null,
+    preset: presetLabel || null
+  });
+  persist();
+  renderLog();
+}
 
-  describeDevice();
-  log('Ready. Tap "Start camera" and grant permission.');
-})();
+document.getElementById('btnMark').addEventListener('click', () => {
+  const input = document.getElementById('actualDist');
+  const val = parseFloat(input.value);
+  if (isNaN(val)) { alert('Enter the tape reading in cm first'); return; }
+  if (!startTime) startTime = performance.now();
+  logPoint(val);
+  input.value = '';
+});
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  let csv = 'index,elapsed_s,focus_distance_raw,sharpness,focus_mode,marked_actual_cm,preset_label\n';
+  log.forEach((r, i) => {
+    csv += `${i},${r.t.toFixed(3)},${r.focusDistance ?? ''},${r.sharpness ?? ''},${r.mode ?? ''},${r.markedCm ?? ''},${r.preset ?? ''}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `focus-probe-log-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (!confirm('Clear all logged points? This cannot be undone (download CSV first if you want to keep them).')) return;
+  log = [];
+  persist();
+  renderLog();
+});
 </script>
 </body>
 </html>
