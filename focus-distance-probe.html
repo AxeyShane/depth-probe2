@@ -113,7 +113,7 @@
 
 <div class="panel" id="logPanel" style="display:none">
   <h2>Walk-Back Test Log</h2>
-  <div class="sub">Tap Start Logging, then walk backward from the object with your tape measure. focusDistance and sharpness both log automatically 5x/sec. Whenever you read a distance off the tape, type it below and tap Mark to tie that tape reading to the live focusDistance/sharpness at that instant.</div>
+  <div class="sub">Tap Start Logging, then walk backward from the object with your tape measure. This forces continuous (auto) focus for the whole run and locks the manual controls above — a stray preset tap mid-walk would otherwise pin focusDistance and silently stop it tracking anything real. focusDistance and sharpness both log automatically 5x/sec. Whenever you read a distance off the tape, type it below and tap Mark to tie that tape reading to the live focusDistance/sharpness at that instant.</div>
 
   <div class="row">
     <button id="btnLog" class="primary">Start Logging</button>
@@ -325,23 +325,43 @@ function setupManualDrive() {
 }
 
 // ---- logging ----
-document.getElementById('btnLog').addEventListener('click', () => {
+// Logging forces continuous (auto) focus and locks out manual controls --
+// otherwise a Near/Mid/Far tap mid-walk silently pins focusDistance to that
+// preset for the rest of the run, which looks like data but isn't (the
+// value stops tracking the real scene entirely).
+function setDriveControlsEnabled(enabled) {
+  ['focusSlider', 'btnNear', 'btnMid', 'btnFar', 'btnAuto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+}
+
+document.getElementById('btnLog').addEventListener('click', async () => {
   logging = !logging;
   const btn = document.getElementById('btnLog');
   const status = document.getElementById('logStatus');
   if (logging) {
+    if (track) {
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (e) {
+        try { await track.applyConstraints({ focusMode: 'continuous' }); } catch (e2) {}
+      }
+    }
+    setDriveControlsEnabled(false);
     if (!startTime) startTime = performance.now();
     btn.textContent = 'Stop Logging';
     btn.classList.remove('primary'); btn.classList.add('danger');
     status.style.display = 'block';
     status.classList.add('recording');
-    status.textContent = 'Recording... walk backward with the tape now.';
+    status.textContent = 'Recording in continuous-autofocus mode (manual controls locked) — walk backward with the tape now.';
     logTimer = setInterval(() => logPoint(), 200); // 5x/sec
   } else {
+    setDriveControlsEnabled(true);
     btn.textContent = 'Start Logging';
     btn.classList.add('primary'); btn.classList.remove('danger');
     status.classList.remove('recording');
-    status.textContent = 'Stopped.';
+    status.textContent = 'Stopped. Manual controls unlocked again.';
     clearInterval(logTimer);
   }
 });
